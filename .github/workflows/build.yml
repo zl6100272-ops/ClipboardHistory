@@ -1,0 +1,54 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Build
+        run: |
+          cd /tmp
+          git clone https://github.com/${{ github.repository }}.git
+          cd ClipboardHistory
+          swift build -c release
+
+      - name: Create .app bundle
+        run: |
+          mkdir -p build/ClipboardHistory.app/Contents/MacOS
+          mkdir -p build/ClipboardHistory.app/Contents/Resources
+          cp .build/release/ClipboardHistory build/ClipboardHistory.app/Contents/MacOS/
+          cp ClipboardHistory/Info.plist build/ClipboardHistory.app/Contents/
+          cp -r ClipboardHistory/Assets.xcassets build/ClipboardHistory.app/Contents/Resources/
+          # Create AppIcon if exists
+          cp -r ClipboardHistory/Assets.xcassets/AppIcon.appiconset build/ClipboardHistory.app/Contents/Resources/ 2>/dev/null || true
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg 2>/dev/null || true
+          create-dmg \
+            --volname "ClipboardHistory" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "ClipboardHistory.app" 175 190 \
+            --hide-extension "ClipboardHistory.app" \
+            --app-drop-link 425 190 \
+            "ClipboardHistory.dmg" \
+            "build/"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ClipboardHistory.dmg
+          generate_release_notes: true
