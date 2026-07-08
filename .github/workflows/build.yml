@@ -8,55 +8,61 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    defaults:
-      run:
-        working-directory: /Users/runner/work/ClipboardHistory/ClipboardHistory
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
       - name: Build (SPM)
         run: swift build -c release
+        working-directory: ${{ github.workspace }}
 
       - name: Locate binary
         id: binary
         run: |
-          BIN=$(swift build -c release --show-bin-path)/ClipboardHistory
-          echo "binary=$BIN" >> $GITHUB_OUTPUT
-          ls -la "$BIN"
+          BIN_PATH=$(swift build -c release --show-bin-path)
+          echo "bin_dir=$BIN_PATH" >> $GITHUB_OUTPUT
+          ls -la "$BIN_PATH/"
 
       - name: Create .app bundle
         run: |
-          BINARY="${{ steps.binary.outputs.binary }}"
-          BUNDLE="build/ClipboardHistory.app"
-          mkdir -p "$BUNDLE/Contents/MacOS"
-          mkdir -p "$BUNDLE/Contents/Resources"
-          cp "$BINARY" "$BUNDLE/Contents/MacOS/"
-          cp ClipboardHistory/Info.plist "$BUNDLE/Contents/"
-          # Copy Assets.xcassets
-          cp -r ClipboardHistory/Assets.xcassets "$BUNDLE/Contents/Resources/" 2>/dev/null || true
-          # Generate a simple app icon if no assets
-          echo "App bundle created at $BUNDLE"
+          BIN_DIR="${{ steps.binary.outputs.bin_dir }}"
+          mkdir -p "build/ClipboardHistory.app/Contents/MacOS"
+          mkdir -p "build/ClipboardHistory.app/Contents/Resources"
+          cp "$BIN_DIR/ClipboardHistory" "build/ClipboardHistory.app/Contents/MacOS/"
+          # Find Info.plist - might be in repo root or subfolder
+          find . -name "Info.plist" -maxdepth 4 | head -5
+          cp ClipboardHistory/Info.plist "build/ClipboardHistory.app/Contents/" 2>/dev/null || \
+          cp Info.plist "build/ClipboardHistory.app/Contents/" 2>/dev/null || \
+          echo "Warning: No Info.plist found"
+          # Copy Assets if exists
+          cp -r ClipboardHistory/Assets.xcassets "build/ClipboardHistory.app/Contents/Resources/" 2>/dev/null || true
 
-      - name: Create DMG
+      - name: Package DMG
         run: |
-          brew install create-dmg 2>/dev/null || true
-          create-dmg \
-            --volname "ClipboardHistory v${{ github.ref_name }}" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "ClipboardHistory.app" 175 190 \
-            --hide-extension "ClipboardHistory.app" \
-            --app-drop-link 425 190 \
-            "ClipboardHistory.dmg" \
-            "build/" || {
-              echo "create-dmg failed, falling back to zip..."
-              cd build && zip -r ../ClipboardHistory.zip ClipboardHistory.app
-            }
+          if command -v create-dmg &>/dev/null; then
+            create-dmg \
+              --volname "ClipboardHistory v${{ github.ref_name }}" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "ClipboardHistory.app" 175 190 \
+              --app-drop-link 425 190 \
+              "ClipboardHistory.dmg" \
+              "build/" || true
+          fi
+          # Always create zip fallback
+          cd build && zip -r ../ClipboardHistory.zip ClipboardHistory.app && cd ..
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClipboardHistory
+          path: |
+            ClipboardHistory.dmg
+            ClipboardHistory.zip
+          if-no-files-found: ignore
 
       - name: Release
         uses: softprops/action-gh-release@v2
