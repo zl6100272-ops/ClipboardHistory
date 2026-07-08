@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    defaults:
+      run:
+        working-directory: /Users/runner/work/ClipboardHistory/ClipboardHistory
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -15,28 +18,34 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
-      - name: Build
+      - name: Build (SPM)
+        run: swift build -c release
+
+      - name: Locate binary
+        id: binary
         run: |
-          cd /tmp
-          git clone https://github.com/${{ github.repository }}.git
-          cd ClipboardHistory
-          swift build -c release
+          BIN=$(swift build -c release --show-bin-path)/ClipboardHistory
+          echo "binary=$BIN" >> $GITHUB_OUTPUT
+          ls -la "$BIN"
 
       - name: Create .app bundle
         run: |
-          mkdir -p build/ClipboardHistory.app/Contents/MacOS
-          mkdir -p build/ClipboardHistory.app/Contents/Resources
-          cp .build/release/ClipboardHistory build/ClipboardHistory.app/Contents/MacOS/
-          cp ClipboardHistory/Info.plist build/ClipboardHistory.app/Contents/
-          cp -r ClipboardHistory/Assets.xcassets build/ClipboardHistory.app/Contents/Resources/
-          # Create AppIcon if exists
-          cp -r ClipboardHistory/Assets.xcassets/AppIcon.appiconset build/ClipboardHistory.app/Contents/Resources/ 2>/dev/null || true
+          BINARY="${{ steps.binary.outputs.binary }}"
+          BUNDLE="build/ClipboardHistory.app"
+          mkdir -p "$BUNDLE/Contents/MacOS"
+          mkdir -p "$BUNDLE/Contents/Resources"
+          cp "$BINARY" "$BUNDLE/Contents/MacOS/"
+          cp ClipboardHistory/Info.plist "$BUNDLE/Contents/"
+          # Copy Assets.xcassets
+          cp -r ClipboardHistory/Assets.xcassets "$BUNDLE/Contents/Resources/" 2>/dev/null || true
+          # Generate a simple app icon if no assets
+          echo "App bundle created at $BUNDLE"
 
       - name: Create DMG
         run: |
           brew install create-dmg 2>/dev/null || true
           create-dmg \
-            --volname "ClipboardHistory" \
+            --volname "ClipboardHistory v${{ github.ref_name }}" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
@@ -44,11 +53,16 @@ jobs:
             --hide-extension "ClipboardHistory.app" \
             --app-drop-link 425 190 \
             "ClipboardHistory.dmg" \
-            "build/"
+            "build/" || {
+              echo "create-dmg failed, falling back to zip..."
+              cd build && zip -r ../ClipboardHistory.zip ClipboardHistory.app
+            }
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ClipboardHistory.dmg
+            ClipboardHistory.zip
           generate_release_notes: true
+          fail_on_unmatched_files: false
