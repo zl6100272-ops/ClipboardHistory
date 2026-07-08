@@ -7,68 +7,68 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+
+      - name: 🔍 Debug file structure
+        run: |
+          echo "=== PWD ==="
+          pwd
+          echo "=== GITHUB_WORKSPACE ==="
+          echo "${{ github.workspace }}"
+          echo "=== Files ==="
+          find . -maxdepth 5 -not -path './.git/*' -not -path './.build/*' | head -50
+          echo "=== Package.swift ==="
+          cat Package.swift
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
-      - name: Build (SPM)
-        run: swift build -c release
-        working-directory: ${{ github.workspace }}
-
-      - name: Locate binary
-        id: binary
+      - name: Build
         run: |
-          BIN_PATH=$(swift build -c release --show-bin-path)
-          echo "bin_dir=$BIN_PATH" >> $GITHUB_OUTPUT
-          ls -la "$BIN_PATH/"
+          swift build -c release 2>&1
+          echo "=== Build output ==="
+          ls -la .build/release/
+          find .build -name "ClipboardHistory" -type f 2>/dev/null
 
-      - name: Create .app bundle
+      - name: Create .app
         run: |
-          BIN_DIR="${{ steps.binary.outputs.bin_dir }}"
-          mkdir -p "build/ClipboardHistory.app/Contents/MacOS"
-          mkdir -p "build/ClipboardHistory.app/Contents/Resources"
-          cp "$BIN_DIR/ClipboardHistory" "build/ClipboardHistory.app/Contents/MacOS/"
-          # Find Info.plist - might be in repo root or subfolder
-          find . -name "Info.plist" -maxdepth 4 | head -5
-          cp ClipboardHistory/Info.plist "build/ClipboardHistory.app/Contents/" 2>/dev/null || \
-          cp Info.plist "build/ClipboardHistory.app/Contents/" 2>/dev/null || \
-          echo "Warning: No Info.plist found"
-          # Copy Assets if exists
-          cp -r ClipboardHistory/Assets.xcassets "build/ClipboardHistory.app/Contents/Resources/" 2>/dev/null || true
-
-      - name: Package DMG
-        run: |
-          if command -v create-dmg &>/dev/null; then
-            create-dmg \
-              --volname "ClipboardHistory v${{ github.ref_name }}" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "ClipboardHistory.app" 175 190 \
-              --app-drop-link 425 190 \
-              "ClipboardHistory.dmg" \
-              "build/" || true
+          set -x
+          ROOT="${{ github.workspace }}"
+          BINARY=$(find "$ROOT/.build" -name "ClipboardHistory" -type f 2>/dev/null | head -1)
+          echo "Binary found: $BINARY"
+          
+          mkdir -p "$ROOT/build/ClipboardHistory.app/Contents/MacOS"
+          mkdir -p "$ROOT/build/ClipboardHistory.app/Contents/Resources"
+          
+          cp "$BINARY" "$ROOT/build/ClipboardHistory.app/Contents/MacOS/"
+          
+          # Find Info.plist
+          PLIST=$(find "$ROOT" -name "Info.plist" -maxdepth 4 2>/dev/null | head -1)
+          echo "Info.plist: $PLIST"
+          cp "$PLIST" "$ROOT/build/ClipboardHistory.app/Contents/"
+          
+          # Find Assets
+          ASSETS=$(find "$ROOT" -name "Assets.xcassets" -maxdepth 4 -type d 2>/dev/null | head -1)
+          echo "Assets: $ASSETS"
+          if [ -n "$ASSETS" ]; then
+            cp -r "$ASSETS" "$ROOT/build/ClipboardHistory.app/Contents/Resources/"
           fi
-          # Always create zip fallback
-          cd build && zip -r ../ClipboardHistory.zip ClipboardHistory.app && cd ..
+          
+          echo "=== App bundle ==="
+          find "$ROOT/build" -maxdepth 4
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ClipboardHistory
-          path: |
-            ClipboardHistory.dmg
-            ClipboardHistory.zip
-          if-no-files-found: ignore
+      - name: Package
+        run: |
+          cd ${{ github.workspace }}/build
+          zip -r ../ClipboardHistory.zip ClipboardHistory.app
+          cd ${{ github.workspace }}
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ClipboardHistory.dmg
-            ClipboardHistory.zip
+            ${{ github.workspace }}/ClipboardHistory.zip
           generate_release_notes: true
           fail_on_unmatched_files: false
