@@ -41,32 +41,19 @@ jobs:
 
           cp "$BINARY" "$APP/Contents/MacOS/ClipboardHistory"
 
+          # Try to find existing Info.plist in source
           PLIST=$(find "$ROOT" -name "Info.plist" -not -path '*/\.*' -maxdepth 4 2>/dev/null | head -1)
-          echo "Info.plist: $PLIST"
           if [ -n "$PLIST" ]; then
+            echo "Found Info.plist at: $PLIST"
             cp "$PLIST" "$APP/Contents/Info.plist"
           else
-            # Generate minimal Info.plist if not found
-            cat > "$APP/Contents/Info.plist" <<'PLISTEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDisplayName</key>
-    <string>Clipboard History</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.clipboard-history</string>
-    <key>CFBundleName</key>
-    <string>ClipboardHistory</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>13.5</string>
-    <key>LSUIElement</key>
-    <true/>
-</dict>
-</plist>
-PLISTEOF
+            echo "No Info.plist found, generating with PlistBuddy..."
+            /usr/libexec/PlistBuddy -c "Add CFBundleDisplayName string 'Clipboard History'" "$APP/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.clipboard-history" "$APP/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleName string ClipboardHistory" "$APP/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string APPL" "$APP/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add LSMinimumSystemVersion string 13.5" "$APP/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add LSUIElement bool true" "$APP/Contents/Info.plist"
           fi
 
           echo "=== App bundle ==="
