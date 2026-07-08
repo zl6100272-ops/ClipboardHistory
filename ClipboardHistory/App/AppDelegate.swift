@@ -29,7 +29,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuBar = MenuBarManager(settings: settings)
 
             menuBar.onQuit = { NSApp.terminate(nil) }
-            menuBar.onOpenSettings = { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
+            menuBar.onOpenSettings = {
+                NSApp.activate(ignoringOtherApps: true)
+                if #available(macOS 14, *) {
+                    NSApp.sendAction(#selector(NSApplication.showSettings), to: nil, from: nil)
+                } else {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+            }
             shortcutManager.onShowHistory = { [weak self] in self?.floatingWindow.toggleNearMouse() }
             shortcutManager.onToggleRecording = { [weak self] in self?.settings.isRecordingPaused.toggle() }
             observeHotKeyChanges()
