@@ -2,6 +2,7 @@ import AppKit
 import Carbon
 import Combine
 import SwiftUI
+import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             monitor.start()
             shortcutManager.start()
             requestAccessibilityPermissionIfNeeded()
+            showWelcomeNotification()
         } catch {
             NSAlert(error: error).runModal()
             NSApp.terminate(nil)
@@ -50,6 +52,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func requestAccessibilityPermissionIfNeeded() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    private func showWelcomeNotification() {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Clipboard History 已启动"
+            content.body = "按 ⌘⇧V 查看剪贴板历史\n菜单栏图标 📋 可打开设置"
+            content.sound = .default
+            let request = UNNotificationRequest(
+                identifier: "clipboard-welcome",
+                content: content,
+                trigger: nil
+            )
+            center.add(request)
+        }
     }
 
     private func observeHotKeyChanges() {

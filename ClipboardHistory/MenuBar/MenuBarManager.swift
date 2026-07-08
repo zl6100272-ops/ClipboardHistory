@@ -42,7 +42,16 @@ final class MenuBarManager {
 
     private func updateIcon() {
         guard let button = item.button else { return }
-        button.image = NSImage(systemSymbolName: "paperclip", accessibilityDescription: "Clipboard History")
+        // Use clipboard icon — more visible than paperclip
+        let image = NSImage(systemSymbolName: "clipboard", accessibilityDescription: "Clipboard History")
+        if let image {
+            // Create a template image that adapts to light/dark mode
+            image.isTemplate = true
+            button.image = image
+        } else {
+            // Fallback: use plain text
+            button.title = "📋"
+        }
         button.contentTintColor = settings.isRecordingPaused ? .disabledControlTextColor : .labelColor
 
         if let pauseItem = item.menu?.items.first {
