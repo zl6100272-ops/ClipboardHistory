@@ -7,68 +7,103 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-
-      - name: 🔍 Debug file structure
-        run: |
-          echo "=== PWD ==="
-          pwd
-          echo "=== GITHUB_WORKSPACE ==="
-          echo "${{ github.workspace }}"
-          echo "=== Files ==="
-          find . -maxdepth 5 -not -path './.git/*' -not -path './.build/*' | head -50
-          echo "=== Package.swift ==="
-          cat Package.swift
+      - uses: actions/checkout@v5
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
-      - name: Build
+      - name: Build (release)
         run: |
           swift build -c release 2>&1
-          echo "=== Build output ==="
-          ls -la .build/release/
-          find .build -name "ClipboardHistory" -type f 2>/dev/null
+          BIN_PATH=$(swift build -c release --show-bin-path 2>&1)
+          echo "BIN_PATH=$BIN_PATH" >> $GITHUB_ENV
+          echo "=== Binary dir ==="
+          ls -la "$BIN_PATH/"
+          echo "=== Binary check ==="
+          find "$BIN_PATH" -name "ClipboardHistory" -type f
 
-      - name: Create .app
+      - name: Create .app bundle
         run: |
           set -x
-          ROOT="${{ github.workspace }}"
-          BINARY=$(find "$ROOT/.build" -name "ClipboardHistory" -type f 2>/dev/null | head -1)
-          echo "Binary found: $BINARY"
-          
-          mkdir -p "$ROOT/build/ClipboardHistory.app/Contents/MacOS"
-          mkdir -p "$ROOT/build/ClipboardHistory.app/Contents/Resources"
-          
-          cp "$BINARY" "$ROOT/build/ClipboardHistory.app/Contents/MacOS/"
-          
-          # Find Info.plist
-          PLIST=$(find "$ROOT" -name "Info.plist" -maxdepth 4 2>/dev/null | head -1)
-          echo "Info.plist: $PLIST"
-          cp "$PLIST" "$ROOT/build/ClipboardHistory.app/Contents/"
-          
-          # Find Assets
-          ASSETS=$(find "$ROOT" -name "Assets.xcassets" -maxdepth 4 -type d 2>/dev/null | head -1)
-          echo "Assets: $ASSETS"
-          if [ -n "$ASSETS" ]; then
-            cp -r "$ASSETS" "$ROOT/build/ClipboardHistory.app/Contents/Resources/"
+          BINARY="${{ env.BIN_PATH }}/ClipboardHistory"
+          if [ ! -f "$BINARY" ]; then
+            echo "Binary not found at $BINARY, trying find..."
+            BINARY=$(find "${{ github.workspace }}/.build" -name "ClipboardHistory" -type f 2>/dev/null | head -1)
           fi
-          
-          echo "=== App bundle ==="
-          find "$ROOT/build" -maxdepth 4
+          echo "Using binary: $BINARY"
+          test -f "$BINARY" || { echo "FATAL: binary not found"; exit 1; }
 
-      - name: Package
+          ROOT="${{ github.workspace }}"
+          APP="$ROOT/build/ClipboardHistory.app"
+          mkdir -p "$APP/Contents/MacOS"
+
+          cp "$BINARY" "$APP/Contents/MacOS/ClipboardHistory"
+
+          PLIST=$(find "$ROOT" -name "Info.plist" -not -path '*/\.*' -maxdepth 4 2>/dev/null | head -1)
+          echo "Info.plist: $PLIST"
+          if [ -n "$PLIST" ]; then
+            cp "$PLIST" "$APP/Contents/Info.plist"
+          else
+            # Generate minimal Info.plist if not found
+            cat > "$APP/Contents/Info.plist" <<'PLISTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Clipboard History</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.clipboard-history</string>
+    <key>CFBundleName</key>
+    <string>ClipboardHistory</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.5</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+PLISTEOF
+          fi
+
+          echo "=== App bundle ==="
+          find "$APP" -maxdepth 3
+          echo "=== Codesign ==="
+          codesign --force --deep --sign - "$APP" || echo "codesign skipped (no cert)"
+
+      - name: Package (zip)
         run: |
           cd ${{ github.workspace }}/build
           zip -r ../ClipboardHistory.zip ClipboardHistory.app
           cd ${{ github.workspace }}
+          ls -lh ClipboardHistory.zip
+
+      - name: Create DMG (optional)
+        run: |
+          if command -v create-dmg &>/dev/null; then
+            create-dmg \
+              --volname "Clipboard History" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "ClipboardHistory.app" 175 120 \
+              --hide-extension "ClipboardHistory.app" \
+              --app-drop-link 425 120 \
+              "${{ github.workspace }}/ClipboardHistory.dmg" \
+              "${{ github.workspace }}/build/"
+            ls -lh "${{ github.workspace }}/ClipboardHistory.dmg"
+          else
+            echo "create-dmg not installed, will upload .zip only"
+          fi
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ github.workspace }}/ClipboardHistory.zip
+            ${{ github.workspace }}/ClipboardHistory.dmg
           generate_release_notes: true
           fail_on_unmatched_files: false
