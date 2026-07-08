@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuBar.onOpenSettings = {
                 NSApp.activate(ignoringOtherApps: true)
                 if #available(macOS 14, *) {
-                    NSApp.sendAction(#selector(NSApplication.showSettings), to: nil, from: nil)
+                    NSApp.sendAction(Selector(("showSettings:")), to: nil, from: nil)
                 } else {
                     NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                 }
