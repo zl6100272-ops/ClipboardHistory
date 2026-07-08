@@ -70,27 +70,28 @@ jobs:
           cd ${{ github.workspace }}
           ls -lh ClipboardHistory.zip
 
-      - name: Create DMG (optional)
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
         run: |
-          if command -v create-dmg &>/dev/null; then
-            create-dmg \
-              --volname "Clipboard History" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "ClipboardHistory.app" 175 120 \
-              --hide-extension "ClipboardHistory.app" \
-              --app-drop-link 425 120 \
-              "${{ github.workspace }}/ClipboardHistory.dmg" \
-              "${{ github.workspace }}/build/"
-            ls -lh "${{ github.workspace }}/ClipboardHistory.dmg"
-          else
-            echo "create-dmg not installed, will upload .zip only"
-          fi
+          create-dmg \
+            --volname "Clipboard History" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "ClipboardHistory.app" 175 120 \
+            --hide-extension "ClipboardHistory.app" \
+            --app-drop-link 425 120 \
+            "${{ github.workspace }}/ClipboardHistory.dmg" \
+            "${{ github.workspace }}/build/"
+          ls -lh "${{ github.workspace }}/ClipboardHistory.dmg"
 
       - name: Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ github.workspace }}/ClipboardHistory.zip
+          files: |
+            ${{ github.workspace }}/ClipboardHistory.zip
+            ${{ github.workspace }}/ClipboardHistory.dmg
           generate_release_notes: true
           fail_on_unmatched_files: false
